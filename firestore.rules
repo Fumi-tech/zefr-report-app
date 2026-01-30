@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // reportsコレクション: レポートデータ
+    match /reports/{reportId} {
+      // 読み取り: 共有URL用途を考慮し、reportIdが存在する場合は読み取り可能
+      // パスワード保護はアプリケーション側で実施
+      allow read: if resource != null 
+                  && resource.data.keys().hasAll(['config', 'processedData']);
+      
+      // 書き込み: App Checkトークンが存在し、かつ適切な構造である場合のみ許可
+      // App Checkで保護されたクライアントからの書き込みを許可
+      allow create: if request.appCheck.token != null
+                    && request.resource.data.keys().hasAll(['config', 'processedData'])
+                    && request.resource.data.config.keys().hasAll(['reportId', 'cpm', 'passwordHash', 'createdAt'])
+                    && request.resource.data.config.reportId == reportId;
+      
+      // 更新・削除は禁止（レポートは作成のみ）
+      allow update, delete: if false;
+    }
+    
+    // その他のコレクション: デフォルトで全拒否
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
