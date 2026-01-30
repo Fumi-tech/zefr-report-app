@@ -1,4 +1,5 @@
 import {
+  addDoc,
   setDoc,
   getDoc,
   doc,
@@ -6,6 +7,8 @@ import {
   query,
   where,
   getDocs,
+  orderBy,
+  limit,
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import { ProcessedData } from './csvProcessor';
@@ -22,6 +25,36 @@ export interface ReportConfig {
 export interface StoredReport {
   config: ReportConfig;
   processedData: ProcessedData;
+}
+
+// ===== 履歴管理（チーム共有） =====
+export interface HistoryReportSnapshot {
+  clientName: string;
+  reportPeriod: string;
+  summaryKPI: {
+    suitabilityRate: number;
+    lift: number;
+    lowQualityBlocked: number;
+    budgetOptimization: number;
+    totalImpressions?: number;
+    estimatedCPM?: number;
+  };
+  graphData: {
+    performanceData: Record<string, any>[];
+    brandSuitabilityData: Record<string, any>[];
+    viewabilityData: Record<string, any>[];
+    deviceViewabilityData: Record<string, any>[];
+    brandRiskByCategory: Record<string, any>[];
+    ivtRates: Record<string, any>[];
+  };
+  createdAt: number; // epoch ms
+}
+
+export interface HistoryReportListItem {
+  id: string;
+  clientName: string;
+  reportPeriod: string;
+  createdAt: number;
 }
 
 /**
@@ -174,5 +207,70 @@ export const getReportWithPassword = async (
   } catch (error) {
     console.error('パスワード検証エラー:', error);
     throw error;
+  }
+};
+
+/**
+ * 履歴レポートをFirestoreに保存（チーム共有）
+ * 生CSVは保存せず、集計済みのクリーンJSONのみ保存する。
+ */
+export const saveHistoryReport = async (snapshot: HistoryReportSnapshot): Promise<string> => {
+  try {
+    const colRef = collection(db, 'reportHistory');
+    const docRef = await addDoc(colRef, snapshot);
+    return docRef.id;
+  } catch (error: any) {
+    console.error('履歴レポート保存エラー:', error);
+    if (error?.code === 'permission-denied') {
+      throw new Error('履歴レポートの保存が拒否されました（Firestore Rules / App Check / 認証設定を確認してください）。');
+    }
+    throw new Error('履歴レポートの保存に失敗しました: ' + (error?.message || String(error)));
+  }
+};
+
+/**
+ * 履歴レポート一覧を取得（最新順）
+ */
+export const listHistoryReports = async (maxItems: number = 30): Promise<HistoryReportListItem[]> => {
+  try {
+    const q = query(
+      collection(db, 'reportHistory'),
+      orderBy('createdAt', 'desc'),
+      limit(maxItems)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => {
+      const data = d.data() as any;
+      return {
+        id: d.id,
+        clientName: String(data.clientName ?? ''),
+        reportPeriod: String(data.reportPeriod ?? ''),
+        createdAt: typeof data.createdAt === 'number' ? data.createdAt : Number(data.createdAt) || 0,
+      };
+    });
+  } catch (error: any) {
+    console.error('履歴レポート一覧取得エラー:', error);
+    if (error?.code === 'permission-denied') {
+      throw new Error('履歴レポート一覧の取得が拒否されました（Firestore Rules / 認証設定を確認してください）。');
+    }
+    throw new Error('履歴レポート一覧の取得に失敗しました: ' + (error?.message || String(error)));
+  }
+};
+
+/**
+ * 履歴レポートを1件取得
+ */
+export const getHistoryReport = async (id: string): Promise<HistoryReportSnapshot | null> => {
+  try {
+    const ref = doc(db, 'reportHistory', id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    return snap.data() as HistoryReportSnapshot;
+  } catch (error: any) {
+    console.error('履歴レポート取得エラー:', error);
+    if (error?.code === 'permission-denied') {
+      throw new Error('履歴レポートの取得が拒否されました（Firestore Rules / 認証設定を確認してください）。');
+    }
+    throw new Error('履歴レポートの取得に失敗しました: ' + (error?.message || String(error)));
   }
 };

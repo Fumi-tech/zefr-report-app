@@ -9,7 +9,7 @@ import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar, Area, AreaChart
 } from 'recharts';
 import { useLocation } from 'wouter';
-import { saveReport, getReportWithPassword, ReportConfig } from '@/lib/firestoreService';
+import { saveReport, getReportWithPassword, ReportConfig, saveHistoryReport, listHistoryReports, getHistoryReport } from '@/lib/firestoreService';
 import { hashPassword, generateReportId } from '@/lib/passwordUtils';
 import type { ProcessedData } from '@/lib/csvProcessor';
 
@@ -299,6 +299,13 @@ export default function ZefrInsightReport() {
   const [accessPassword, setAccessPassword] = useState('');
   const [showAccessPassword, setShowAccessPassword] = useState(false);
   const [isSharedView, setIsSharedView] = useState(false);
+
+  // 履歴管理（チーム共有）
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyItems, setHistoryItems] = useState<Array<{ id: string; clientName: string; reportPeriod: string; createdAt: number }>>([]);
+  const [historySaving, setHistorySaving] = useState(false);
+  const [historySaved, setHistorySaved] = useState(false);
 
   // Firestore直操作（MVP: server不要）
 
@@ -1025,6 +1032,96 @@ export default function ZefrInsightReport() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // 履歴用: 集計済みJSONのみを保存（巨大CSVは保存しない）
+  const buildHistorySnapshot = () => {
+    if (!reportData) return null;
+    const reportPeriod = reportData.reportingPeriod || reportData.createdAt || '';
+    return {
+      clientName: reportData.clientName || '',
+      reportPeriod,
+      summaryKPI: {
+        suitabilityRate: Number(reportData.suitabilityRate ?? 0),
+        lift: Number(reportData.lift ?? 0),
+        lowQualityBlocked: Number(reportData.lowQualityBlocked ?? 0),
+        budgetOptimization: Number(reportData.budgetOptimization ?? 0),
+        totalImpressions: reportData.totalImpressions !== undefined ? Number(reportData.totalImpressions) : undefined,
+        estimatedCPM: reportData.estimatedCPM !== undefined ? Number(reportData.estimatedCPM) : undefined,
+      },
+      graphData: {
+        performanceData: capArray(reportData.performanceData || []),
+        brandSuitabilityData: capArray(reportData.brandSuitabilityData || []),
+        viewabilityData: capArray(reportData.viewabilityData || []),
+        deviceViewabilityData: capArray(reportData.deviceViewabilityData || []),
+        brandRiskByCategory: capArray(reportData.brandRiskByCategory || []),
+        ivtRates: capArray(reportData.ivtRates || []),
+      },
+      createdAt: Date.now(),
+    };
+  };
+
+  const handleSaveHistory = async () => {
+    if (!reportData || historySaving) return;
+    try {
+      setHistorySaving(true);
+      const snapshot = buildHistorySnapshot();
+      if (!snapshot) return;
+      await saveHistoryReport(snapshot as any);
+      setHistorySaved(true);
+      setTimeout(() => setHistorySaved(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setHistorySaving(false);
+    }
+  };
+
+  const handleOpenHistory = async () => {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const items = await listHistoryReports(30);
+      setHistoryItems(items);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleRestoreHistory = async (id: string) => {
+    try {
+      setHistoryLoading(true);
+      const snap = await getHistoryReport(id);
+      if (!snap) {
+        throw new Error('履歴が見つかりません');
+      }
+      const restored = {
+        clientName: snap.clientName || '',
+        reportingPeriod: snap.reportPeriod || '',
+        createdAt: new Date(snap.createdAt || Date.now()).toLocaleString('ja-JP'),
+        totalImpressions: snap.summaryKPI?.totalImpressions ?? undefined,
+        lowQualityBlocked: snap.summaryKPI?.lowQualityBlocked ?? 0,
+        estimatedCPM: snap.summaryKPI?.estimatedCPM ?? undefined,
+        suitabilityRate: snap.summaryKPI?.suitabilityRate ?? 0,
+        lift: snap.summaryKPI?.lift ?? 0,
+        budgetOptimization: snap.summaryKPI?.budgetOptimization ?? 0,
+        performanceData: Array.isArray(snap.graphData?.performanceData) ? snap.graphData.performanceData : [],
+        brandSuitabilityData: Array.isArray(snap.graphData?.brandSuitabilityData) ? snap.graphData.brandSuitabilityData : [],
+        viewabilityData: Array.isArray(snap.graphData?.viewabilityData) ? snap.graphData.viewabilityData : [],
+        deviceViewabilityData: Array.isArray(snap.graphData?.deviceViewabilityData) ? snap.graphData.deviceViewabilityData : [],
+        brandRiskByCategory: Array.isArray(snap.graphData?.brandRiskByCategory) ? snap.graphData.brandRiskByCategory : [],
+        ivtRates: Array.isArray(snap.graphData?.ivtRates) ? snap.graphData.ivtRates : [],
+      };
+      setReportData(restored);
+      setStage('dashboard');
+      setHistoryOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   const handleAccessReport = async () => {
     try {
       if (!sharedReportId || !accessPassword) {
@@ -1597,6 +1694,19 @@ export default function ZefrInsightReport() {
             </div>
             {/* ボタン群のみエクスポート時に非表示 */}
             <div className="flex gap-3" data-export-hide>
+              <button
+                onClick={handleSaveHistory}
+                disabled={historySaving}
+                className="flex items-center gap-2 px-4 py-2 bg-white rounded-[16px] hover:bg-slate-50 border border-slate-200 disabled:opacity-50"
+              >
+                {historySaved ? '保存済み' : 'レポートを保存'}
+              </button>
+              <button
+                onClick={handleOpenHistory}
+                className="flex items-center gap-2 px-4 py-2 bg-white rounded-[16px] hover:bg-slate-50 border border-slate-200"
+              >
+                履歴を表示
+              </button>
               <button onClick={handlePDFExport} className="flex items-center gap-2 px-4 py-2 bg-white rounded-[16px] hover:bg-slate-50 border border-slate-200">
                 <Download className="w-5 h-5" /> PDF
               </button>
@@ -1605,6 +1715,53 @@ export default function ZefrInsightReport() {
               </button>
             </div>
           </div>
+
+          {/* 履歴モーダル（PDF/PPTXエクスポート時は非表示） */}
+          {historyOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center" data-export-hide>
+              <div className="absolute inset-0 bg-black/40" onClick={() => setHistoryOpen(false)} />
+              <div className="relative w-full max-w-2xl bg-white rounded-[24px] shadow-lg border border-slate-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-slate-900">レポート履歴</h3>
+                  <button
+                    type="button"
+                    className="text-sm text-slate-600 hover:underline"
+                    onClick={() => setHistoryOpen(false)}
+                  >
+                    閉じる
+                  </button>
+                </div>
+                {historyLoading ? (
+                  <p className="text-sm text-slate-600">読み込み中...</p>
+                ) : (
+                  <div className="max-h-[60vh] overflow-auto divide-y divide-slate-100">
+                    {historyItems.length === 0 ? (
+                      <p className="text-sm text-slate-600 py-4">履歴がありません。</p>
+                    ) : (
+                      historyItems.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => handleRestoreHistory(item.id)}
+                          className="w-full text-left py-3 hover:bg-slate-50 rounded-lg px-2"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-900 truncate">{item.clientName || '（名称未設定）'}</p>
+                              <p className="text-xs text-slate-600 truncate">配信期間: {item.reportPeriod || 'N/A'}</p>
+                            </div>
+                            <div className="text-xs text-slate-500 whitespace-nowrap">
+                              {item.createdAt ? new Date(item.createdAt).toLocaleString('ja-JP') : ''}
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* KPIカード */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
