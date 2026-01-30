@@ -1120,7 +1120,7 @@ export default function ZefrInsightReport() {
           iframeDoc.body.style.setProperty('background', '#ffffff', 'important');
           setTimeout(() => {
             html2canvas(root, {
-              scale: 2,
+              scale: 1.5,
               useCORS: false,
               backgroundColor: '#ffffff',
               logging: false,
@@ -1286,7 +1286,7 @@ export default function ZefrInsightReport() {
     try {
       setError('');
       const canvas = await captureDashboardSimple(element);
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
       
       const pdfWidth = 210;
       const pdfHeight = 297;
@@ -1306,7 +1306,9 @@ export default function ZefrInsightReport() {
       const xPos = (pdfWidth - finalWidth) / 2;
       const yPos = (pdfHeight - finalHeight) / 2;
 
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', xPos, yPos, finalWidth, finalHeight);
+      const jpegData = canvas.toDataURL('image/jpeg', 0.8);
+      pdf.addImage(jpegData, 'JPEG', xPos, yPos, finalWidth, finalHeight, 'report', 'FAST');
+      console.log("PDF Compression applied: Format switched to JPEG(0.8), Scale set to 1.5, Internal compression enabled.");
       pdf.save(`${(reportData?.clientName || 'zefr-report').replace(/[\\/:*?"<>|]/g, '_')}_report.pdf`);
     } catch (err) {
       setError('PDF出力エラー: ' + (err instanceof Error ? err.message : String(err)));
