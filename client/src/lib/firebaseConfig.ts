@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFirestore, connectFirestoreEmulator, type Firestore } from 'firebase/firestore';
 
 // Firebase App Checkのインポート（オプション）
 // firebase/app-check が利用可能な場合のみインポート
@@ -17,7 +17,6 @@ const firebaseConfig = {
 
 // Firebase初期化
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
 
 // Firebase App Check初期化（セキュリティ強化）
 // 開発環境ではデバッグトークンを使用、本番環境ではreCAPTCHA v3を使用
@@ -59,13 +58,37 @@ export const appCheckReady: Promise<boolean> = (async () => {
   }
 })();
 
-// 開発環境ではエミュレーターを使用（オプション）
-if (import.meta.env.DEV && import.meta.env.VITE_USE_FIRESTORE_EMULATOR === 'true') {
-  try {
-    connectFirestoreEmulator(db, 'localhost', 8080);
-  } catch (e) {
-    // エミュレーターが既に接続されている場合はスキップ
+let dbInstance: Firestore | null = null;
+let dbInitPromise: Promise<Firestore> | null = null;
+
+/**
+ * Firestore インスタンスを遅延生成する。
+ * App Check 初期化（初回トークン取得）後に生成することで、
+ * 初回の Listen/channel に X-Firebase-AppCheck を載せる。
+ */
+export async function getDb(): Promise<Firestore> {
+  if (dbInstance) return dbInstance;
+  if (!dbInitPromise) {
+    dbInitPromise = (async () => {
+      // App Check の初期化が終わるまで待つ（成功/失敗いずれでも resolve）
+      await appCheckReady;
+
+      const db = getFirestore(app);
+
+      // 開発環境ではエミュレーターを使用（オプション）
+      if (import.meta.env.DEV && import.meta.env.VITE_USE_FIRESTORE_EMULATOR === 'true') {
+        try {
+          connectFirestoreEmulator(db, 'localhost', 8080);
+        } catch (e) {
+          // エミュレーターが既に接続されている場合はスキップ
+        }
+      }
+
+      dbInstance = db;
+      return db;
+    })();
   }
+  return dbInitPromise;
 }
 
 export default app;

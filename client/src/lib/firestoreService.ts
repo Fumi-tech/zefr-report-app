@@ -10,7 +10,7 @@ import {
   orderBy,
   limit,
 } from 'firebase/firestore';
-import { db } from './firebaseConfig';
+import { getDb } from './firebaseConfig';
 import { ProcessedData } from './csvProcessor';
 import { hashPassword } from './passwordUtils';
 
@@ -68,6 +68,7 @@ export const saveReport = async (
   processedData: ProcessedData
 ): Promise<void> => {
   try {
+    const db = await getDb();
     const reportRef = doc(db, 'reports', reportId);
     
     await setDoc(reportRef, {
@@ -123,6 +124,7 @@ export const saveReport = async (
  */
 export const getReport = async (reportId: string): Promise<StoredReport | null> => {
   try {
+    const db = await getDb();
     const reportRef = doc(db, 'reports', reportId);
     const reportSnap = await getDoc(reportRef);
 
@@ -216,6 +218,7 @@ export const getReportWithPassword = async (
  */
 export const saveHistoryReport = async (snapshot: HistoryReportSnapshot): Promise<string> => {
   try {
+    const db = await getDb();
     const colRef = collection(db, 'reportHistory');
     const docRef = await addDoc(colRef, snapshot);
     return docRef.id;
@@ -233,6 +236,7 @@ export const saveHistoryReport = async (snapshot: HistoryReportSnapshot): Promis
  */
 export const listHistoryReports = async (maxItems: number = 30): Promise<HistoryReportListItem[]> => {
   try {
+    const db = await getDb();
     const q = query(
       collection(db, 'reportHistory'),
       orderBy('createdAt', 'desc'),
@@ -262,6 +266,7 @@ export const listHistoryReports = async (maxItems: number = 30): Promise<History
  */
 export const getHistoryReport = async (id: string): Promise<HistoryReportSnapshot | null> => {
   try {
+    const db = await getDb();
     const ref = doc(db, 'reportHistory', id);
     const snap = await getDoc(ref);
     if (!snap.exists()) return null;
