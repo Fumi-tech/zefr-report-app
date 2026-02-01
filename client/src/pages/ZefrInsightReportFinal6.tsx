@@ -307,6 +307,11 @@ export default function ZefrInsightReport() {
   const [historySaving, setHistorySaving] = useState(false);
   const [historySaved, setHistorySaved] = useState(false);
 
+  // setup ステージでの社内用履歴表示
+  const [setupHistoryLoading, setSetupHistoryLoading] = useState(false);
+  const [setupHistoryItems, setSetupHistoryItems] = useState<Array<{ id: string; clientName: string; reportPeriod: string; createdAt: number }>>([]);
+  const [setupHistoryError, setSetupHistoryError] = useState('');
+
   // Firestore直操作（MVP: server不要）
 
   // ファイル処理
@@ -420,10 +425,10 @@ export default function ZefrInsightReport() {
 
       // データ集計
       let suitabilityRate = 0;
-      let brandSuitabilityData = [];
-      let performanceData = [];
-      let viewabilityData = [];
-      let deviceViewabilityData = {};
+      let brandSuitabilityData: any[] = [];
+      let performanceData: any[] = [];
+      let viewabilityData: any[] = [];
+      let deviceViewabilityData: any[] = [];
 
       // Performance処理
       if (fileData.performance?.data) {
@@ -1444,6 +1449,35 @@ export default function ZefrInsightReport() {
     }
   }, [location]);
 
+  // setup ステージ: 社内用に履歴を自動取得
+  useEffect(() => {
+    if (stage !== 'setup') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setSetupHistoryLoading(true);
+        setSetupHistoryError('');
+        const items = await listHistoryReports(10);
+        if (cancelled) return;
+        setSetupHistoryItems(items);
+      } catch (e) {
+        if (cancelled) return;
+        setSetupHistoryError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (cancelled) return;
+        setSetupHistoryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stage]);
+
+  // 完了報告ログ（1回だけ）
+  useEffect(() => {
+    console.log("Internal History & External Shared View logic updated in ZefrInsightReportFinal6.tsx");
+  }, []);
+
   // ===== UI レンダリング =====
 
   if (stage === 'shared') {
@@ -1641,6 +1675,38 @@ export default function ZefrInsightReport() {
               {loading ? 'ロード中...' : 'レポートを生成して共有'}
             </button>
           </div>
+
+          {/* 過去のレポート履歴（社内用） */}
+          <div className="bg-white rounded-[32px] p-8 shadow-sm border border-white mt-6">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">過去のレポート履歴（社内用）</h3>
+            {setupHistoryLoading ? (
+              <p className="text-sm text-slate-600">読み込み中...</p>
+            ) : setupHistoryError ? (
+              <p className="text-sm text-red-700 whitespace-pre-wrap">{setupHistoryError}</p>
+            ) : setupHistoryItems.length === 0 ? (
+              <p className="text-sm text-slate-600">履歴がありません。</p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {setupHistoryItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleRestoreHistory(item.id)}
+                    className="w-full text-left py-3 hover:bg-slate-50 rounded-lg px-2"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900 truncate">{item.clientName || '（名称未設定）'}</p>
+                      </div>
+                      <div className="text-xs text-slate-500 whitespace-nowrap">
+                        {item.createdAt ? new Date(item.createdAt).toLocaleString('ja-JP') : ''}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -1694,19 +1760,23 @@ export default function ZefrInsightReport() {
             </div>
             {/* ボタン群のみエクスポート時に非表示 */}
             <div className="flex gap-3" data-export-hide>
-              <button
-                onClick={handleSaveHistory}
-                disabled={historySaving}
-                className="flex items-center gap-2 px-4 py-2 bg-white rounded-[16px] hover:bg-slate-50 border border-slate-200 disabled:opacity-50"
-              >
-                {historySaved ? '保存済み' : 'レポートを保存'}
-              </button>
-              <button
-                onClick={handleOpenHistory}
-                className="flex items-center gap-2 px-4 py-2 bg-white rounded-[16px] hover:bg-slate-50 border border-slate-200"
-              >
-                履歴を表示
-              </button>
+              {!isSharedView && (
+                <>
+                  <button
+                    onClick={handleSaveHistory}
+                    disabled={historySaving}
+                    className="flex items-center gap-2 px-4 py-2 bg-white rounded-[16px] hover:bg-slate-50 border border-slate-200 disabled:opacity-50"
+                  >
+                    {historySaved ? '保存済み' : 'レポートを保存'}
+                  </button>
+                  <button
+                    onClick={handleOpenHistory}
+                    className="flex items-center gap-2 px-4 py-2 bg-white rounded-[16px] hover:bg-slate-50 border border-slate-200"
+                  >
+                    履歴を表示
+                  </button>
+                </>
+              )}
               <button onClick={handlePDFExport} className="flex items-center gap-2 px-4 py-2 bg-white rounded-[16px] hover:bg-slate-50 border border-slate-200">
                 <Download className="w-5 h-5" /> PDF
               </button>
@@ -1717,7 +1787,7 @@ export default function ZefrInsightReport() {
           </div>
 
           {/* 履歴モーダル（PDF/PPTXエクスポート時は非表示） */}
-          {historyOpen && (
+          {!isSharedView && historyOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center" data-export-hide>
               <div className="absolute inset-0 bg-black/40" onClick={() => setHistoryOpen(false)} />
               <div className="relative w-full max-w-2xl bg-white rounded-[24px] shadow-lg border border-slate-200 p-6">
@@ -2220,7 +2290,7 @@ export default function ZefrInsightReport() {
           </div>
 
           {/* Web発行（PDF/PPTXエクスポート時は非表示） */}
-          {!sharedLink && (
+          {!isSharedView && !sharedLink && (
             <div className="bg-white rounded-[32px] p-8 shadow-sm border border-white mb-8" data-export-hide>
               <h3 className="text-lg font-bold text-slate-900 mb-4">レポートを Web 発行</h3>
               <div className="flex gap-4">
