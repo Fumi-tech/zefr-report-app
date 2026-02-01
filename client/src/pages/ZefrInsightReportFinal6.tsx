@@ -12,6 +12,7 @@ import { useLocation } from 'wouter';
 import { saveReport, getReportWithPassword, ReportConfig, saveHistoryReport, listHistoryReports, getHistoryReport } from '@/lib/firestoreService';
 import { hashPassword, generateReportId } from '@/lib/passwordUtils';
 import type { ProcessedData } from '@/lib/csvProcessor';
+import { appCheckReady } from '@/lib/firebaseConfig';
 
 // ユーティリティ関数
 const generateReportIdLocal = () => {
@@ -311,6 +312,14 @@ export default function ZefrInsightReport() {
   const [setupHistoryLoading, setSetupHistoryLoading] = useState(false);
   const [setupHistoryItems, setSetupHistoryItems] = useState<Array<{ id: string; clientName: string; reportPeriod: string; createdAt: number }>>([]);
   const [setupHistoryError, setSetupHistoryError] = useState('');
+
+  const waitForAppCheck = async (): Promise<boolean> => {
+    // App Check の初期化/初回トークン取得を少し待つ（永遠に待たない）
+    return await Promise.race([
+      appCheckReady,
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000)),
+    ]);
+  };
 
   // Firestore直操作（MVP: server不要）
 
@@ -1068,6 +1077,10 @@ export default function ZefrInsightReport() {
     if (!reportData || historySaving) return;
     try {
       setHistorySaving(true);
+      const ok = await waitForAppCheck();
+      if (!ok) {
+        throw new Error('App Check の準備が完了していません。数秒待ってから再度お試しください。');
+      }
       const snapshot = buildHistorySnapshot();
       if (!snapshot) return;
       await saveHistoryReport(snapshot as any);
@@ -1084,6 +1097,10 @@ export default function ZefrInsightReport() {
     setHistoryOpen(true);
     setHistoryLoading(true);
     try {
+      const ok = await waitForAppCheck();
+      if (!ok) {
+        throw new Error('App Check の準備が完了していません。数秒待ってから再度お試しください。');
+      }
       const items = await listHistoryReports(30);
       setHistoryItems(items);
     } catch (e) {
@@ -1096,6 +1113,10 @@ export default function ZefrInsightReport() {
   const handleRestoreHistory = async (id: string) => {
     try {
       setHistoryLoading(true);
+      const ok = await waitForAppCheck();
+      if (!ok) {
+        throw new Error('App Check の準備が完了していません。数秒待ってから再度お試しください。');
+      }
       const snap = await getHistoryReport(id);
       if (!snap) {
         throw new Error('履歴が見つかりません');
@@ -1457,6 +1478,10 @@ export default function ZefrInsightReport() {
       try {
         setSetupHistoryLoading(true);
         setSetupHistoryError('');
+        const ok = await waitForAppCheck();
+        if (!ok) {
+          throw new Error('App Check の準備が完了していません。数秒待ってから再度お試しください。');
+        }
         const items = await listHistoryReports(10);
         if (cancelled) return;
         setSetupHistoryItems(items);

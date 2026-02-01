@@ -21,39 +21,43 @@ export const db = getFirestore(app);
 
 // Firebase App Check初期化（セキュリティ強化）
 // 開発環境ではデバッグトークンを使用、本番環境ではreCAPTCHA v3を使用
-if (typeof window !== 'undefined') {
-  // 動的インポートでApp Checkを読み込む（ESM対応）
-  import('firebase/app-check')
-    .then((appCheckModule) => {
-      const { initializeAppCheck, ReCaptchaV3Provider } = appCheckModule;
-      
-      try {
-        const appCheck = initializeAppCheck(app, {
-          provider: new ReCaptchaV3Provider(
-            import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI' // デフォルトはテストキー
-          ),
-          isTokenAutoRefreshEnabled: true,
-        });
-        
-        // 開発環境ではデバッグトークンを設定（コンソールに表示される）
-        if (import.meta.env.DEV) {
-          // @ts-ignore - 開発環境でのみ使用
-          self.FIREBASE_APPCHECK_DEBUG_TOKEN = import.meta.env.VITE_APPCHECK_DEBUG_TOKEN || true;
-        }
-        
-        appCheckInitialized = true;
-        console.log('[Firebase] App Check initialized successfully');
-      } catch (error) {
-        console.warn('[Firebase] App Check initialization failed:', error);
-        console.warn('[Firebase] Firestore writes will be blocked until App Check is properly configured.');
-      }
-    })
-    .catch((error) => {
-      // App Checkモジュールが存在しない場合や読み込みに失敗した場合
-      console.warn('[Firebase] App Check module not available:', error);
-      console.warn('[Firebase] Firestore writes will be blocked until App Check is properly configured.');
+// App Check の初期化 + 初回トークン取得までを待てるように Promise を公開する。
+const isBrowser = typeof (globalThis as any).window !== 'undefined';
+export const appCheckReady: Promise<boolean> = (async () => {
+  if (!isBrowser) return false;
+  try {
+    const appCheckModule = await import('firebase/app-check');
+    const { initializeAppCheck, ReCaptchaV3Provider, getToken } = appCheckModule;
+
+    // 開発環境ではデバッグトークンを設定（initialize前が推奨）
+    if (import.meta.env.DEV) {
+      // @ts-ignore - 開発環境でのみ使用
+      self.FIREBASE_APPCHECK_DEBUG_TOKEN = import.meta.env.VITE_APPCHECK_DEBUG_TOKEN || true;
+    }
+
+    const appCheck = initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(
+        import.meta.env.VITE_RECAPTCHA_SITE_KEY || '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI' // デフォルトはテストキー
+      ),
+      isTokenAutoRefreshEnabled: true,
     });
-}
+
+    // 初回トークンを取得しておく（Firestoreの初回通信にヘッダを乗せるため）
+    try {
+      await getToken(appCheck, true);
+    } catch (tokenErr) {
+      console.warn('[Firebase] App Check token prefetch failed:', tokenErr);
+    }
+
+    appCheckInitialized = true;
+    console.log('[Firebase] App Check initialized successfully');
+    return true;
+  } catch (error) {
+    console.warn('[Firebase] App Check initialization failed:', error);
+    console.warn('[Firebase] Firestore writes will be blocked until App Check is properly configured.');
+    return false;
+  }
+})();
 
 // 開発環境ではエミュレーターを使用（オプション）
 if (import.meta.env.DEV && import.meta.env.VITE_USE_FIRESTORE_EMULATOR === 'true') {
