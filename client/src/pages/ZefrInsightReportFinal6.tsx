@@ -409,12 +409,22 @@ export default function ZefrInsightReport() {
       setLoading(true);
       setError('');
 
-      const totalImp = parseNumberWithUnit(totalImpressions);
-      const lowQuality = parseNumberWithUnit(lowQualityBlocked);
       const cpm = parseFloat(estimatedCPM) || 1500;
 
-      if (!totalImp || !lowQuality || !clientName) {
+      const clientTrim = clientName.trim();
+      const totalImpStr = totalImpressions.trim();
+      const lowQualityStr = lowQualityBlocked.trim();
+      if (!clientTrim || !totalImpStr || !lowQualityStr) {
         throw new Error('すべての入力項目を入力してください');
+      }
+
+      const totalImp = parseNumberWithUnit(totalImpressions);
+      const lowQuality = parseNumberWithUnit(lowQualityBlocked);
+      if (!Number.isFinite(totalImp) || totalImp <= 0) {
+        throw new Error('Total Measurable Impressions は 0 より大きい値を入力してください');
+      }
+      if (!Number.isFinite(lowQuality) || lowQuality < 0) {
+        throw new Error('Low-quality Impressions Blocked は 0 以上の数値を入力してください');
       }
 
       const fileData: any = {};
