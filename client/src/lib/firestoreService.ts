@@ -49,6 +49,10 @@ export interface HistoryReportSnapshot {
   };
   /** 戦略的インサイトをユーザー編集したとき */
   strategicInsightText?: string;
+  /** 表示文言をユーザー編集したとき */
+  displayClientName?: string;
+  displayReportingPeriod?: string;
+  displayKpi?: ProcessedData['displayKpi'];
   createdAt: number; // epoch ms
 }
 
@@ -95,6 +99,9 @@ export const saveReport = async (
         brandRiskByCategory: processedData.brandRiskByCategory || [],
         ivtRates: processedData.ivtRates || [],
         strategicInsightText: processedData.strategicInsightText,
+        displayClientName: processedData.displayClientName,
+        displayReportingPeriod: processedData.displayReportingPeriod,
+        displayKpi: processedData.displayKpi,
       },
       // 詳細データは別コレクションに保存
       performance: processedData.performance,
@@ -169,6 +176,18 @@ export const getReport = async (reportId: string): Promise<StoredReport | null> 
         strategicInsightText:
           typeof data.processedData?.strategicInsightText === 'string'
             ? data.processedData.strategicInsightText
+            : undefined,
+        displayClientName:
+          typeof data.processedData?.displayClientName === 'string'
+            ? data.processedData.displayClientName
+            : undefined,
+        displayReportingPeriod:
+          typeof data.processedData?.displayReportingPeriod === 'string'
+            ? data.processedData.displayReportingPeriod
+            : undefined,
+        displayKpi:
+          typeof data.processedData?.displayKpi === 'object' && data.processedData?.displayKpi
+            ? data.processedData.displayKpi
             : undefined,
       } as ProcessedData,
     };

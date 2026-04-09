@@ -54,6 +54,12 @@ const convertReportDataToProcessedData = (reportData: any): ProcessedData => {
     ivtRates: reportData.ivtRates || [],
     strategicInsightText:
       typeof reportData.strategicInsightText === 'string' ? reportData.strategicInsightText : undefined,
+    displayClientName:
+      typeof reportData.displayClientName === 'string' ? reportData.displayClientName : undefined,
+    displayReportingPeriod:
+      typeof reportData.displayReportingPeriod === 'string' ? reportData.displayReportingPeriod : undefined,
+    displayKpi:
+      typeof reportData.displayKpi === 'object' && reportData.displayKpi ? reportData.displayKpi : undefined,
   };
 };
 
@@ -103,6 +109,9 @@ const convertProcessedDataToReportData = (processedData: ProcessedData, cpm: num
     brandRiskByCategory: processedData.brandRiskByCategory || [],
     ivtRates: processedData.ivtRates || [],
     strategicInsightText: processedData.strategicInsightText,
+    displayClientName: processedData.displayClientName,
+    displayReportingPeriod: processedData.displayReportingPeriod,
+    displayKpi: processedData.displayKpi,
   };
 };
 
@@ -166,6 +175,12 @@ const sanitizeProcessedData = (data: ProcessedData): ProcessedData => {
       : [],
     strategicInsightText:
       typeof data.strategicInsightText === 'string' ? data.strategicInsightText : undefined,
+    displayClientName:
+      typeof data.displayClientName === 'string' ? data.displayClientName : undefined,
+    displayReportingPeriod:
+      typeof data.displayReportingPeriod === 'string' ? data.displayReportingPeriod : undefined,
+    displayKpi:
+      typeof data.displayKpi === 'object' && data.displayKpi ? data.displayKpi : undefined,
   };
 };
 
@@ -203,6 +218,25 @@ const buildDefaultStrategicInsightText = (rd: any): string => {
   }
   return parts.join('\n\n');
 };
+
+const buildDefaultDisplayTexts = (rd: any) => ({
+  clientName: rd.clientName || '',
+  reportingPeriod: rd.reportingPeriod || rd.createdAt || '',
+  kpi: {
+    suitabilityRateLabel: 'ブランド適合率',
+    suitabilityRateValue: toPercentStr(rd.suitabilityRate),
+    suitabilityRateSubLabel: 'Suitable合計 / Total Impressions合計',
+    liftLabel: '適合性リフト',
+    liftValue: `+${rd.lift?.toFixed(1) || 'N/A'} pt`,
+    liftSubLabel: '改善効果',
+    lowQualityLabel: '総除外インプレッション',
+    lowQualityValue: formatNumberWithUnit(rd.lowQualityBlocked),
+    lowQualitySubLabel: 'ブロック済み',
+    budgetOptimizationLabel: '適正化予算額推定',
+    budgetOptimizationValue: `¥${rd.budgetOptimization?.toLocaleString('ja-JP', { maximumFractionDigits: 0 }) || 'N/A'}`,
+    budgetOptimizationSubLabel: '推定削減額',
+  },
+});
 
 /** 小数点→パーセント表示の共通ユーティリティ（0.98 → "98.0%"）。既に0–100の値はそのまま%。 */
 const toPercentStr = (val: number | undefined | null): string => {
@@ -1009,6 +1043,14 @@ export default function ZefrInsightReport() {
       const reportingPeriod = (fileData as any).reportingPeriod || new Date().toLocaleString('ja-JP');
       const brandRiskByCategory = (fileData as any).brandRiskByCategory || [];
       const ivtRates = (fileData as any).ivtRates || [];
+      const displayDefaults = buildDefaultDisplayTexts({
+        clientName,
+        reportingPeriod,
+        suitabilityRate,
+        lift,
+        lowQualityBlocked: lowQuality,
+        budgetOptimization,
+      });
 
       const newReportData = {
         clientName,
@@ -1038,6 +1080,9 @@ export default function ZefrInsightReport() {
           performanceData,
           brandRiskByCategory,
         }),
+        displayClientName: displayDefaults.clientName,
+        displayReportingPeriod: displayDefaults.reportingPeriod,
+        displayKpi: displayDefaults.kpi,
       };
 
       setReportData(newReportData);
@@ -1129,6 +1174,12 @@ export default function ZefrInsightReport() {
       },
       strategicInsightText:
         typeof reportData.strategicInsightText === 'string' ? reportData.strategicInsightText : undefined,
+      displayClientName:
+        typeof reportData.displayClientName === 'string' ? reportData.displayClientName : undefined,
+      displayReportingPeriod:
+        typeof reportData.displayReportingPeriod === 'string' ? reportData.displayReportingPeriod : undefined,
+      displayKpi:
+        typeof reportData.displayKpi === 'object' && reportData.displayKpi ? reportData.displayKpi : undefined,
       createdAt: Date.now(),
     };
   };
@@ -1199,6 +1250,12 @@ export default function ZefrInsightReport() {
         ivtRates: Array.isArray(snap.graphData?.ivtRates) ? snap.graphData.ivtRates : [],
         strategicInsightText:
           typeof snap.strategicInsightText === 'string' ? snap.strategicInsightText : undefined,
+        displayClientName:
+          typeof snap.displayClientName === 'string' ? snap.displayClientName : undefined,
+        displayReportingPeriod:
+          typeof snap.displayReportingPeriod === 'string' ? snap.displayReportingPeriod : undefined,
+        displayKpi:
+          typeof snap.displayKpi === 'object' && snap.displayKpi ? snap.displayKpi : undefined,
       };
       setReportData(restored);
       setStage('dashboard');
@@ -1804,6 +1861,10 @@ export default function ZefrInsightReport() {
     const colors = ['#0ea5e9', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6366f1'];
     const suitPct = reportData.suitabilityRate ?? 0;
     const liftPct = reportData.lift ?? 0;
+    const displayDefaults = buildDefaultDisplayTexts(reportData);
+    const displayClientName = reportData.displayClientName ?? displayDefaults.clientName;
+    const displayReportingPeriod = reportData.displayReportingPeriod ?? displayDefaults.reportingPeriod;
+    const displayKpi = { ...displayDefaults.kpi, ...(reportData.displayKpi || {}) };
     const originalPct = Math.max(0, suitPct - liftPct);
     const remainingPct = suitPct < 100 ? 100 - suitPct : 0;
     const donutData = [
@@ -1843,7 +1904,24 @@ export default function ZefrInsightReport() {
           <div className="mb-2 flex justify-between items-start">
             <div>
               <h1 className="text-4xl font-bold text-slate-900 mb-2">Zefr インサイトレポート</h1>
-              <p className="text-slate-600">{reportData.clientName} | 配信期間 {reportData.reportingPeriod || reportData.createdAt}</p>
+              <p className="text-slate-600 flex flex-wrap items-center gap-1">
+                <input
+                  className="bg-transparent border-none p-0 m-0 text-slate-600 focus:outline-none min-w-[120px]"
+                  value={displayClientName}
+                  readOnly={isSharedView}
+                  onChange={(e) => setReportData({ ...reportData, displayClientName: e.target.value })}
+                  aria-label="表示クライアント名"
+                />
+                <span>|</span>
+                <span>配信期間</span>
+                <input
+                  className="bg-transparent border-none p-0 m-0 text-slate-600 focus:outline-none min-w-[160px]"
+                  value={displayReportingPeriod}
+                  readOnly={isSharedView}
+                  onChange={(e) => setReportData({ ...reportData, displayReportingPeriod: e.target.value })}
+                  aria-label="表示配信期間"
+                />
+              </p>
             </div>
             {/* ボタン群のみエクスポート時に非表示 */}
             <div className="flex gap-3" data-export-hide>
@@ -1923,27 +2001,159 @@ export default function ZefrInsightReport() {
           {/* KPIカード */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2">
             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-white">
-              <p className="text-xs font-semibold text-slate-600 mb-2">ブランド適合率</p>
-              <p className="text-3xl font-bold text-slate-900">{toPercentStr(reportData.suitabilityRate)}</p>
-              <p className="text-xs text-slate-500 mt-2">Suitable合計 / Total Impressions合計</p>
+              <input
+                className="text-xs font-semibold text-slate-600 mb-2 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.suitabilityRateLabel}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), suitabilityRateLabel: e.target.value },
+                  })
+                }
+                aria-label="KPI1 ラベル"
+              />
+              <input
+                className="text-3xl font-bold text-slate-900 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.suitabilityRateValue}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), suitabilityRateValue: e.target.value },
+                  })
+                }
+                aria-label="KPI1 値"
+              />
+              <input
+                className="text-xs text-slate-500 mt-2 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.suitabilityRateSubLabel}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), suitabilityRateSubLabel: e.target.value },
+                  })
+                }
+                aria-label="KPI1 補足"
+              />
             </div>
 
             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-white">
-              <p className="text-xs font-semibold text-slate-600 mb-2">適合性リフト</p>
-              <p className="text-3xl font-bold text-sky-500">+{reportData.lift?.toFixed(1) || 'N/A'} pt</p>
-              <p className="text-xs text-slate-500 mt-2">改善効果</p>
+              <input
+                className="text-xs font-semibold text-slate-600 mb-2 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.liftLabel}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), liftLabel: e.target.value },
+                  })
+                }
+                aria-label="KPI2 ラベル"
+              />
+              <input
+                className="text-3xl font-bold text-sky-500 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.liftValue}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), liftValue: e.target.value },
+                  })
+                }
+                aria-label="KPI2 値"
+              />
+              <input
+                className="text-xs text-slate-500 mt-2 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.liftSubLabel}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), liftSubLabel: e.target.value },
+                  })
+                }
+                aria-label="KPI2 補足"
+              />
             </div>
 
             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-white">
-              <p className="text-xs font-semibold text-slate-600 mb-2">総除外インプレッション</p>
-              <p className="text-3xl font-bold text-slate-900">{formatNumberWithUnit(reportData.lowQualityBlocked)}</p>
-              <p className="text-xs text-slate-500 mt-2">ブロック済み</p>
+              <input
+                className="text-xs font-semibold text-slate-600 mb-2 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.lowQualityLabel}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), lowQualityLabel: e.target.value },
+                  })
+                }
+                aria-label="KPI3 ラベル"
+              />
+              <input
+                className="text-3xl font-bold text-slate-900 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.lowQualityValue}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), lowQualityValue: e.target.value },
+                  })
+                }
+                aria-label="KPI3 値"
+              />
+              <input
+                className="text-xs text-slate-500 mt-2 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.lowQualitySubLabel}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), lowQualitySubLabel: e.target.value },
+                  })
+                }
+                aria-label="KPI3 補足"
+              />
             </div>
 
             <div className="bg-white rounded-[32px] p-6 shadow-sm border border-white">
-              <p className="text-xs font-semibold text-slate-600 mb-2">適正化予算額推定</p>
-              <p className="text-3xl font-bold text-slate-900">¥{reportData.budgetOptimization?.toLocaleString('ja-JP', { maximumFractionDigits: 0 }) || 'N/A'}</p>
-              <p className="text-xs text-slate-500 mt-2">推定削減額</p>
+              <input
+                className="text-xs font-semibold text-slate-600 mb-2 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.budgetOptimizationLabel}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), budgetOptimizationLabel: e.target.value },
+                  })
+                }
+                aria-label="KPI4 ラベル"
+              />
+              <input
+                className="text-3xl font-bold text-slate-900 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.budgetOptimizationValue}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), budgetOptimizationValue: e.target.value },
+                  })
+                }
+                aria-label="KPI4 値"
+              />
+              <input
+                className="text-xs text-slate-500 mt-2 bg-transparent border-none p-0 w-full focus:outline-none"
+                value={displayKpi.budgetOptimizationSubLabel}
+                readOnly={isSharedView}
+                onChange={(e) =>
+                  setReportData({
+                    ...reportData,
+                    displayKpi: { ...(reportData.displayKpi || {}), budgetOptimizationSubLabel: e.target.value },
+                  })
+                }
+                aria-label="KPI4 補足"
+              />
             </div>
           </div>
 

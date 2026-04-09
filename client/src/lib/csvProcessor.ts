@@ -47,6 +47,23 @@ export interface ProcessedData {
   }[];
   /** Final6 ダッシュボード「戦略的インサイト」編集用（Web 発行・履歴で保存） */
   strategicInsightText?: string;
+  /** Final6 ダッシュボード表示文言（ヘッダー/KPI）編集用 */
+  displayClientName?: string;
+  displayReportingPeriod?: string;
+  displayKpi?: {
+    suitabilityRateLabel?: string;
+    suitabilityRateValue?: string;
+    suitabilityRateSubLabel?: string;
+    liftLabel?: string;
+    liftValue?: string;
+    liftSubLabel?: string;
+    lowQualityLabel?: string;
+    lowQualityValue?: string;
+    lowQualitySubLabel?: string;
+    budgetOptimizationLabel?: string;
+    budgetOptimizationValue?: string;
+    budgetOptimizationSubLabel?: string;
+  };
 }
 
 /**
