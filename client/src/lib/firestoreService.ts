@@ -47,6 +47,8 @@ export interface HistoryReportSnapshot {
     brandRiskByCategory: Record<string, any>[];
     ivtRates: Record<string, any>[];
   };
+  /** 戦略的インサイトをユーザー編集したとき */
+  strategicInsightText?: string;
   createdAt: number; // epoch ms
 }
 
@@ -92,6 +94,7 @@ export const saveReport = async (
         estimatedCPM: processedData.estimatedCPM,
         brandRiskByCategory: processedData.brandRiskByCategory || [],
         ivtRates: processedData.ivtRates || [],
+        strategicInsightText: processedData.strategicInsightText,
       },
       // 詳細データは別コレクションに保存
       performance: processedData.performance,
@@ -163,6 +166,10 @@ export const getReport = async (reportId: string): Promise<StoredReport | null> 
         brandRiskByCategory: Array.isArray(data.processedData?.brandRiskByCategory)
           ? data.processedData.brandRiskByCategory
           : [],
+        strategicInsightText:
+          typeof data.processedData?.strategicInsightText === 'string'
+            ? data.processedData.strategicInsightText
+            : undefined,
       } as ProcessedData,
     };
   } catch (error: any) {

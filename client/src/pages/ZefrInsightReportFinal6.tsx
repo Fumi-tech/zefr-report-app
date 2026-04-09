@@ -52,6 +52,8 @@ const convertReportDataToProcessedData = (reportData: any): ProcessedData => {
     estimatedCPM: reportData.estimatedCPM ?? undefined,
     brandRiskByCategory: reportData.brandRiskByCategory || [],
     ivtRates: reportData.ivtRates || [],
+    strategicInsightText:
+      typeof reportData.strategicInsightText === 'string' ? reportData.strategicInsightText : undefined,
   };
 };
 
@@ -100,6 +102,7 @@ const convertProcessedDataToReportData = (processedData: ProcessedData, cpm: num
     createdAt: processedData.reportingPeriod,
     brandRiskByCategory: processedData.brandRiskByCategory || [],
     ivtRates: processedData.ivtRates || [],
+    strategicInsightText: processedData.strategicInsightText,
   };
 };
 
@@ -161,6 +164,8 @@ const sanitizeProcessedData = (data: ProcessedData): ProcessedData => {
           value: sanitizeNumber(item.value),
         }))
       : [],
+    strategicInsightText:
+      typeof data.strategicInsightText === 'string' ? data.strategicInsightText : undefined,
   };
 };
 
@@ -168,6 +173,35 @@ const formatNumberWithUnit = (num: number) => {
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
   if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
   return num.toString();
+};
+
+/** ダッシュボード「戦略的インサイト」のデフォルト文面（従来の固定 JSX と同等） */
+const buildDefaultStrategicInsightText = (rd: any): string => {
+  const suit = rd.suitabilityRate ?? 0;
+  const lift = rd.lift ?? 0;
+  const lowQ = rd.lowQualityBlocked ?? 0;
+  const budget = rd.budgetOptimization ?? 0;
+  const parts: string[] = [];
+  parts.push(`ブランド適合率が${Number(suit).toFixed(1)}%に達しており、高い品質基準を維持しています。`);
+  if (lift && lift > 0) {
+    parts.push(
+      `Zefr ONEの利用により、ブランド不適合の配信面を除外したことでブランド適合性が+${Number(lift).toFixed(1)} pt向上。`
+    );
+  }
+  parts.push(
+    `低品質インプレッション${formatNumberWithUnit(lowQ)}件をブロックし、推定¥${budget.toLocaleString('ja-JP', { maximumFractionDigits: 0 })}の予算最適化を実現。`
+  );
+  if (rd.performanceData && rd.performanceData.length > 0) {
+    parts.push(
+      'コンテキスト・パフォーマンス分析により、カテゴリー別のVCR/CTR（またはViewability）とインプレッション数の関係を可視化し、効果的なコンテンツ配信戦略の立案が可能です。'
+    );
+  }
+  if (rd.brandRiskByCategory && rd.brandRiskByCategory.length > 0) {
+    parts.push(
+      'ブランドリスク分析により、99.9%以上の配信面がGARM・ブランド基準におけるハイレベルなブランドセーフティが保たれています。'
+    );
+  }
+  return parts.join('\n\n');
 };
 
 /** 小数点→パーセント表示の共通ユーティリティ（0.98 → "98.0%"）。既に0–100の値はそのまま%。 */
@@ -972,6 +1006,10 @@ export default function ZefrInsightReport() {
       const lift = (lowQuality / totalImp) * 100;
       const budgetOptimization = (lowQuality / 1000) * cpm;
 
+      const reportingPeriod = (fileData as any).reportingPeriod || new Date().toLocaleString('ja-JP');
+      const brandRiskByCategory = (fileData as any).brandRiskByCategory || [];
+      const ivtRates = (fileData as any).ivtRates || [];
+
       const newReportData = {
         clientName,
         totalImpressions: totalImp,
@@ -984,12 +1022,22 @@ export default function ZefrInsightReport() {
         brandSuitabilityData,
         viewabilityData,
         deviceViewabilityData,
-        brandRiskByCategory: (fileData as any).brandRiskByCategory || [],
-        ivtRates: (fileData as any).ivtRates || [],
+        brandRiskByCategory,
+        ivtRates,
         kpiSumSuitable: (fileData as any).sumSuitableForKpi ?? null,
         kpiSumTotal: (fileData as any).sumTotalForKpi ?? null,
         createdAt: new Date().toLocaleString('ja-JP'),
-        reportingPeriod: (fileData as any).reportingPeriod || new Date().toLocaleString('ja-JP')
+        reportingPeriod,
+        strategicInsightText: buildDefaultStrategicInsightText({
+          clientName,
+          totalImpressions: totalImp,
+          lowQualityBlocked: lowQuality,
+          suitabilityRate,
+          lift,
+          budgetOptimization,
+          performanceData,
+          brandRiskByCategory,
+        }),
       };
 
       setReportData(newReportData);
@@ -1079,6 +1127,8 @@ export default function ZefrInsightReport() {
         brandRiskByCategory: capArray(reportData.brandRiskByCategory || []),
         ivtRates: capArray(reportData.ivtRates || []),
       },
+      strategicInsightText:
+        typeof reportData.strategicInsightText === 'string' ? reportData.strategicInsightText : undefined,
       createdAt: Date.now(),
     };
   };
@@ -1147,6 +1197,8 @@ export default function ZefrInsightReport() {
         deviceViewabilityData: Array.isArray(snap.graphData?.deviceViewabilityData) ? snap.graphData.deviceViewabilityData : [],
         brandRiskByCategory: Array.isArray(snap.graphData?.brandRiskByCategory) ? snap.graphData.brandRiskByCategory : [],
         ivtRates: Array.isArray(snap.graphData?.ivtRates) ? snap.graphData.ivtRates : [],
+        strategicInsightText:
+          typeof snap.strategicInsightText === 'string' ? snap.strategicInsightText : undefined,
       };
       setReportData(restored);
       setStage('dashboard');
@@ -2287,40 +2339,25 @@ export default function ZefrInsightReport() {
             </div>
 
             {/* STRATEGIC INSIGHTS */}
-            <div className="bg-slate-900 rounded-[32px] p-3 shadow-sm text-white" style={{ height: '360px' }}>
-              <h3 className="text-sm font-bold mb-3">戦略的インサイト</h3>
-              <div className="space-y-4 text-sm">
-                <div className="flex gap-3">
-                  <div className="w-2 h-2 bg-sky-500 rounded-full mt-1.5 flex-shrink-0" />
-                  <p>ブランド適合率が{reportData.suitabilityRate?.toFixed(1)}%に達しており、高い品質基準を維持しています。</p>
-                </div>
-                {/* Zefr ONEの効果 */}
-                {reportData.lift && reportData.lift > 0 && (
-                  <div className="flex gap-3">
-                    <div className="w-2 h-2 bg-sky-500 rounded-full mt-1.5 flex-shrink-0" />
-                    <p>Zefr ONEの利用により、ブランド不適合の配信面を除外したことでブランド適合性が+{reportData.lift.toFixed(1)} pt向上。</p>
-                  </div>
-                )}
-                <div className="flex gap-3">
-                  <div className="w-2 h-2 bg-sky-500 rounded-full mt-1.5 flex-shrink-0" />
-                  <p>低品質インプレッション{formatNumberWithUnit(reportData.lowQualityBlocked)}件をブロックし、推定¥{reportData.budgetOptimization?.toLocaleString('ja-JP', { maximumFractionDigits: 0 })}の予算最適化を実現。</p>
-                </div>
-
-                {/* コンテキスト・パフォーマンス分析の説明 */}
-                {reportData.performanceData && reportData.performanceData.length > 0 && (
-                  <div className="flex gap-3">
-                    <div className="w-2 h-2 bg-sky-500 rounded-full mt-1.5 flex-shrink-0" />
-                    <p>コンテキスト・パフォーマンス分析により、カテゴリー別のVCR/CTR（またはViewability）とインプレッション数の関係を可視化し、効果的なコンテンツ配信戦略の立案が可能です。</p>
-                  </div>
-                )}
-                {/* ブランドリスク分析の説明 */}
-                {reportData.brandRiskByCategory && reportData.brandRiskByCategory.length > 0 && (
-                  <div className="flex gap-3">
-                    <div className="w-2 h-2 bg-sky-500 rounded-full mt-1.5 flex-shrink-0" />
-                    <p>ブランドリスク分析により、99.9%以上の配信面がGARM・ブランド基準におけるハイレベルなブランドセーフティが保たれています。</p>
-                  </div>
-                )}
-              </div>
+            <div
+              className="bg-slate-900 rounded-[32px] p-3 shadow-sm text-white flex flex-col"
+              style={{ height: '360px' }}
+            >
+              <h3 className="text-sm font-bold mb-2 shrink-0">戦略的インサイト</h3>
+              <textarea
+                className="flex-1 min-h-0 w-full rounded-2xl bg-slate-800 border border-slate-600 px-3 py-2 text-sm text-white placeholder-slate-500 resize-none leading-relaxed focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-90 disabled:cursor-default"
+                value={
+                  reportData.strategicInsightText != null
+                    ? reportData.strategicInsightText
+                    : buildDefaultStrategicInsightText(reportData)
+                }
+                onChange={(e) =>
+                  setReportData({ ...reportData, strategicInsightText: e.target.value })
+                }
+                readOnly={isSharedView}
+                placeholder="戦略的インサイトを編集できます"
+                aria-label="戦略的インサイト"
+              />
             </div>
           </div>
 

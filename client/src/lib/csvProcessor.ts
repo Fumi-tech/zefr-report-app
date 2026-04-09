@@ -45,6 +45,8 @@ export interface ProcessedData {
     name: string;  // 媒体ベンチマーク / Overall / OTT / Mobile App / Mobile Web
     value: number; // 表示用のパーセント値（例: 0.22 → 0.22%）
   }[];
+  /** Final6 ダッシュボード「戦略的インサイト」編集用（Web 発行・履歴で保存） */
+  strategicInsightText?: string;
 }
 
 /**
