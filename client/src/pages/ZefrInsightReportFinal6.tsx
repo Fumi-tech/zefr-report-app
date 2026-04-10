@@ -1309,6 +1309,80 @@ export default function ZefrInsightReport() {
   };
 
   /**
+   * innerHTML で iframe に複製した際、React の制御コンポーネントの value が属性に載らず
+   * html2canvas が空表示になるため、クローン側へ現在値を同期する。
+   */
+  const syncFormControlsForPdfClone = (source: HTMLElement, cloneRoot: HTMLElement) => {
+    const srcList = source.querySelectorAll('input, textarea');
+    const dstList = cloneRoot.querySelectorAll('input, textarea');
+    const n = Math.min(srcList.length, dstList.length);
+    for (let i = 0; i < n; i++) {
+      const s = srcList[i] as HTMLInputElement | HTMLTextAreaElement;
+      const d = dstList[i] as HTMLInputElement | HTMLTextAreaElement;
+      const v = s.value;
+      d.value = v;
+      if (d instanceof HTMLInputElement) {
+        d.setAttribute('value', v);
+      }
+      if (d instanceof HTMLTextAreaElement) {
+        d.textContent = v;
+      }
+    }
+  };
+
+  /**
+   * html2canvas は input/textarea の描画が環境によって不安定なため、クローン上のみ
+   * 同じ class の div に置き換えてテキストを確実にラスタライズする。
+   */
+  const flattenFormControlsForPdfClone = (cloneRoot: HTMLElement) => {
+    const doc = cloneRoot.ownerDocument;
+    const list = Array.from(cloneRoot.querySelectorAll('input, textarea'));
+    list.forEach((node) => {
+      const el = node as HTMLInputElement | HTMLTextAreaElement;
+      const text = el.value;
+      const div = doc.createElement('div');
+      div.className = el.className;
+      div.textContent = text;
+      if (el instanceof HTMLTextAreaElement) {
+        div.style.whiteSpace = 'pre-wrap';
+        div.style.wordBreak = 'break-word';
+        div.style.overflow = 'visible';
+        div.style.minHeight = '0';
+        div.style.flex = '1 1 auto';
+      } else if (el.hasAttribute('data-pdf-inline')) {
+        div.style.display = 'inline-block';
+        div.style.verticalAlign = 'middle';
+      } else {
+        div.style.display = 'block';
+        div.style.width = '100%';
+        div.style.overflow = 'visible';
+      }
+      el.parentNode?.replaceChild(div, el);
+    });
+  };
+
+  /** 戦略的インサイト枠は固定 height のため PDF では全文がスクロール領域に隠れる。クローンのみ高さを解放する */
+  const expandPdfStrategicPanelsForPdfClone = (cloneRoot: HTMLElement) => {
+    cloneRoot.querySelectorAll('[data-pdf-strategic-panel]').forEach((el) => {
+      const h = el as HTMLElement;
+      h.style.height = 'auto';
+      h.style.minHeight = '360px';
+      h.style.overflow = 'visible';
+    });
+  };
+
+  /** iframe 内は Tailwind 未適用のため、編集 UI（input/textarea）表示用の最小 CSS */
+  const PDF_IFRAME_FORM_CSS =
+    '.flex-wrap{flex-wrap:wrap}.items-center{align-items:center}.shrink-0{flex-shrink:0}.gap-1{gap:0.25rem}.w-full{width:100%}.min-w-0{min-width:0}.min-h-0{min-height:0}.flex-1{flex:1 1 0%}.flex-col{flex-direction:column}' +
+    '.min-w-\\[120px\\]{min-width:120px}.min-w-\\[160px\\]{min-width:160px}' +
+    '.bg-transparent{background-color:transparent}.border-none{border-style:none;border-width:0}.p-0{padding:0}.m-0{margin:0}' +
+    '.text-sky-500{color:#0ea5e9}.leading-relaxed{line-height:1.625}' +
+    '.bg-slate-900{background-color:#0f172a}.bg-slate-800{background-color:#1e293b}.text-white{color:#fff}' +
+    '.border-slate-600{border-color:#475569}.border{border-width:1px;border-style:solid}' +
+    '.px-3{padding-left:0.75rem;padding-right:0.75rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}' +
+    'input,textarea{font:inherit;color:inherit;resize:none}';
+
+  /**
    * シンプルかつ確実に全体をキャプチャする関数（oklchカラー対応）
    * html2canvas は oklch 未対応のため、oklch を含まない iframe 内でキャプチャする
    */
@@ -1327,6 +1401,7 @@ export default function ZefrInsightReport() {
       '.grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr))}.md\\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.md\\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.lg\\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}',
       'svg{overflow:visible}.recharts-wrapper{width:100%!important;height:100%!important}.recharts-cartesian-axis-tick-value{font-size:12px;fill:#6b7280}',
       'button,cursor-pointer{cursor:pointer}',
+      PDF_IFRAME_FORM_CSS,
     ].join('');
     
     return new Promise((resolve, reject) => {
@@ -1348,6 +1423,9 @@ export default function ZefrInsightReport() {
             return;
           }
           root.innerHTML = source.innerHTML;
+          syncFormControlsForPdfClone(source, root);
+          flattenFormControlsForPdfClone(root);
+          expandPdfStrategicPanelsForPdfClone(root);
           // エクスポート時は PDF/PPTX/Web発行ボタンを非表示
           root.querySelectorAll('[data-export-hide]').forEach((el) => {
             (el as HTMLElement).style.setProperty('display', 'none');
@@ -1414,6 +1492,7 @@ export default function ZefrInsightReport() {
       '.grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr))}.md\\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.md\\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.lg\\:grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}',
       'svg{overflow:visible}.recharts-wrapper{width:100%!important;height:100%!important}.recharts-cartesian-axis-tick-value{font-size:12px;fill:#6b7280}',
       'button,cursor-pointer{cursor:pointer}',
+      PDF_IFRAME_FORM_CSS,
     ].join('');
     return new Promise((resolve, reject) => {
       const iframe = document.createElement('iframe');
@@ -1435,6 +1514,9 @@ export default function ZefrInsightReport() {
             return;
           }
           root.innerHTML = source.innerHTML;
+          syncFormControlsForPdfClone(source, root);
+          flattenFormControlsForPdfClone(root);
+          expandPdfStrategicPanelsForPdfClone(root);
           // エクスポート時は PDF/PPTX/Web発行ボタンと、それらを含むヘッダー/ナビ要素を非表示（要件4）
           root.querySelectorAll('[data-export-hide]').forEach((el) => {
             (el as HTMLElement).style.setProperty('display', 'none');
@@ -1906,6 +1988,7 @@ export default function ZefrInsightReport() {
               <h1 className="text-4xl font-bold text-slate-900 mb-2">Zefr インサイトレポート</h1>
               <p className="text-slate-600 flex flex-wrap items-center gap-1">
                 <input
+                  data-pdf-inline
                   className="bg-transparent border-none p-0 m-0 text-slate-600 focus:outline-none min-w-[120px]"
                   value={displayClientName}
                   readOnly={isSharedView}
@@ -1915,6 +1998,7 @@ export default function ZefrInsightReport() {
                 <span>|</span>
                 <span>配信期間</span>
                 <input
+                  data-pdf-inline
                   className="bg-transparent border-none p-0 m-0 text-slate-600 focus:outline-none min-w-[160px]"
                   value={displayReportingPeriod}
                   readOnly={isSharedView}
@@ -2548,14 +2632,15 @@ export default function ZefrInsightReport() {
               </ResponsiveContainer>
             </div>
 
-            {/* STRATEGIC INSIGHTS */}
+            {/* STRATEGIC INSIGHTS（他セクションと同様の白背景・ダークテキスト） */}
             <div
-              className="bg-slate-900 rounded-[32px] p-3 shadow-sm text-white flex flex-col"
+              className="bg-white rounded-[32px] p-3 shadow-sm border border-white text-slate-900 flex flex-col"
               style={{ height: '360px' }}
+              data-pdf-strategic-panel
             >
-              <h3 className="text-sm font-bold mb-2 shrink-0">戦略的インサイト</h3>
+              <h3 className="text-sm font-bold text-slate-900 mb-2 shrink-0">戦略的インサイト</h3>
               <textarea
-                className="flex-1 min-h-0 w-full rounded-2xl bg-slate-800 border border-slate-600 px-3 py-2 text-sm text-white placeholder-slate-500 resize-none leading-relaxed focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-90 disabled:cursor-default"
+                className="flex-1 min-h-0 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 resize-none leading-relaxed focus:outline-none focus:ring-2 focus:ring-sky-500 disabled:opacity-90 disabled:cursor-default"
                 value={
                   reportData.strategicInsightText != null
                     ? reportData.strategicInsightText
